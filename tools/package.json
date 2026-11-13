@@ -1,0 +1,1 @@
+{"dependencies":{"playwright":"^1.49.0"},"description":"Local render-check tooling for XRift projects (see docs/render-check-loop.md)","name":"xrift-knowhow-tools","private":true,"type":"module"}
