@@ -19,3 +19,7 @@ XRift（ブラウザメタバース）でAIエージェント（むぜ）がワ�
 ## 資産
 
 - `assets/render-mug-v1.png` / `render-mug-v2.png` — レンダリング確認ループで取っ手の浮きを見つけ、直した前後の比較
+
+## 家具カタログ
+
+作った家具は名前を付けて [furniture/](./furniture/README.md) に部品（.tsx）とラボ画像付きで置いてある。
