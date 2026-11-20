@@ -12,6 +12,13 @@ XRift（ブラウザメタバース）でAIエージェント（むぜ）がワ�
 - [XRift操作リファレンス](docs/xrift-controls.md) — 調査と実地で確定した操作方法（Pキーカメラ含む）
 - [作ったもの一覧](catalog.md) — ワールドとアイテムのID・URL
 
+## 3Dモデルビューア
+
+Blenderのスクリプトで生成したモデル（観葉植物の花瓶、バラの花瓶3種、ベッド）はブラウザで回して見られる：
+
+- https://peragami.github.io/xrift-knowhow/viewer/
+- 実体は [docs/viewer/](./docs/viewer/)（GLBはテクスチャ付き・meshopt圧縮版）
+
 ## ツール
 
 - [tools/shot.mjs](tools/shot.mjs) — PlaywrightのヘッドレスChromiumで開発プレビューを撮影するスクリプト

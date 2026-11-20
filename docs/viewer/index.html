@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>むぜの3Dモデルビューア</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+    background: #14161a;
+    color: #e8e6e1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    padding: 12px 18px;
+    border-bottom: 1px solid #2a2e35;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex: 0 0 auto;
+  }
+  header h1 { font-size: 17px; font-weight: 700; letter-spacing: 0.02em; }
+  header p { font-size: 12px; color: #9aa3ad; }
+  main { flex: 1 1 auto; display: flex; min-height: 0; }
+  #stage { flex: 1 1 auto; position: relative; min-width: 0; }
+  #stage canvas { display: block; }
+  #loading {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #9aa3ad; font-size: 13px; pointer-events: none;
+  }
+  #panel {
+    flex: 0 0 264px;
+    border-left: 1px solid #2a2e35;
+    background: #191c21;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .model-btn {
+    text-align: left;
+    background: #22262d;
+    border: 1px solid #333842;
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: #e8e6e1;
+    cursor: pointer;
+    font: inherit;
+  }
+  .model-btn:hover { border-color: #4a5160; }
+  .model-btn.active { border-color: #7d9bbd; background: #26303c; }
+  .model-btn .name { font-size: 14px; font-weight: 600; display: block; }
+  .model-btn .meta { font-size: 11px; color: #9aa3ad; display: block; margin-top: 2px; }
+  #desc { font-size: 12.5px; line-height: 1.7; color: #c9cdd4; padding: 6px 2px; }
+  .row { display: flex; gap: 8px; margin-top: 4px; }
+  .ctl-btn {
+    flex: 1;
+    background: #22262d;
+    border: 1px solid #333842;
+    border-radius: 8px;
+    padding: 8px 6px;
+    color: #e8e6e1;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12.5px;
+  }
+  .ctl-btn.on { border-color: #7d9bbd; background: #26303c; }
+  .hint { font-size: 11px; color: #77808a; line-height: 1.6; margin-top: 8px; }
+  @media (max-width: 720px) {
+    main { flex-direction: column; }
+    #stage { flex: 1 1 55%; }
+    #panel {
+      flex: 0 0 auto;
+      border-left: none;
+      border-top: 1px solid #2a2e35;
+      max-height: 45%;
+    }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<header>
+  <h1>むぜの3Dモデルビューア</h1>
+  <p>Blenderのスクリプトで生成したモデル集</p>
+</header>
+<main>
+  <div id="stage">
+    <div id="loading">読み込み中…</div>
+  </div>
+  <aside id="panel">
+    <div id="list"></div>
+    <div id="desc"></div>
+    <div class="row">
+      <button class="ctl-btn" id="rotateBtn">自動回転 OFF</button>
+      <button class="ctl-btn" id="resetBtn">視点リセット</button>
+    </div>
+    <p class="hint">ドラッグで回転、ホイール／ピンチでズーム、右ドラッグで移動できます。</p>
+  </aside>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const MODELS = [
+  { file: 'models/vase8.glb', name: '観葉植物の花瓶', tris: '10,040', desc: '陶器の花瓶に観葉植物。茎から葉が生える構造で、葉には個体差と法線マップ。' },
+  { file: 'models/rose2.glb', name: 'バラの花瓶（高ポリ版）', tris: '28,260', desc: '開花5輪＋つぼみ2輪。花弁を細かく分割してなめらかに。' },
+  { file: 'models/rose3.glb', name: 'バラの花瓶（5000ポリ版）', tris: '4,940', desc: '開花3輪＋つぼみ1輪に絞り、外側の花弁に配分を寄せた版。' },
+  { file: 'models/rose4.glb', name: 'バラ一本（1000ポリ版）', tris: '995', desc: '一輪挿し。花瓶だけスムーズシェーディングで丸みを出している。' },
+  { file: 'models/bed5.glb', name: 'シンプルなベッド', tris: '2,688', desc: '木製フレーム、角丸長方形マットレス、ふっくらした枕、垂れる掛け布団。' },
+];
+
+const stage = document.getElementById('stage');
+const loadingEl = document.getElementById('loading');
+const descEl = document.getElementById('desc');
+const listEl = document.getElementById('list');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#14161a');
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotateSpeed = 1.6;
+
+const key = new THREE.DirectionalLight('#fff2df', 2.2);
+key.position.set(1.4, 2.4, 1.2);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -1.6; key.shadow.camera.right = 1.6;
+key.shadow.camera.top = 1.6; key.shadow.camera.bottom = -1.6;
+key.shadow.camera.far = 8;
+key.shadow.radius = 6;
+scene.add(key);
+const fill = new THREE.DirectionalLight('#bcd0ff', 0.5);
+fill.position.set(-1.4, 1.0, -1.0);
+scene.add(fill);
+scene.add(new THREE.AmbientLight('#fff2df', 0.25));
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(4, 48),
+  new THREE.MeshStandardMaterial({ color: '#23262c', roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.001;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+let current = null;
+let fitState = null;
+
+function fitCamera(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const center = box.getCenter(new THREE.Vector3());
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const dir = new THREE.Vector3(1, 0.55, 1.35).normalize();
+  const dist = (sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * 0.92;
+  camera.position.copy(center).addScaledVector(dir, dist);
+  camera.near = Math.max(0.01, dist / 100);
+  camera.far = dist * 40;
+  camera.updateProjectionMatrix();
+  controls.target.copy(center);
+  controls.update();
+  fitState = { pos: camera.position.clone(), tgt: center.clone() };
+}
+
+async function loadModel(i) {
+  const m = MODELS[i];
+  [...listEl.children].forEach((el, j) => el.classList.toggle('active', j === i));
+  descEl.textContent = m.desc;
+  loadingEl.style.display = 'flex';
+  loadingEl.textContent = '読み込み中…';
+  try {
+    const gltf = await loader.loadAsync(m.file);
+    if (current) {
+      scene.remove(current);
+      current.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+      });
+    }
+    current = gltf.scene;
+    current.traverse((o) => {
+      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+    });
+    scene.add(current);
+    fitCamera(current);
+    loadingEl.style.display = 'none';
+  } catch (e) {
+    loadingEl.textContent = 'モデルの読み込みに失敗しました。';
+    console.error(e);
+  }
+}
+
+MODELS.forEach((m, i) => {
+  const b = document.createElement('button');
+  b.className = 'model-btn';
+  b.innerHTML = `<span class="name"></span><span class="meta"></span>`;
+  b.querySelector('.name').textContent = m.name;
+  b.querySelector('.meta').textContent = `${m.tris} ポリゴン`;
+  b.addEventListener('click', () => loadModel(i));
+  listEl.appendChild(b);
+});
+
+const rotateBtn = document.getElementById('rotateBtn');
+rotateBtn.addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate;
+  rotateBtn.textContent = controls.autoRotate ? '自動回転 ON' : '自動回転 OFF';
+  rotateBtn.classList.toggle('on', controls.autoRotate);
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (!fitState) return;
+  camera.position.copy(fitState.pos);
+  controls.target.copy(fitState.tgt);
+  controls.update();
+});
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+resize();
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+loadModel(0);
+</script>
+</body>
+</html>
